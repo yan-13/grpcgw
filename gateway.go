@@ -43,6 +43,14 @@ func NewGateway(consulAddr string, apiProtoDir string) (g *Gateway, err error) {
     return
 }
 
+func (p *Gateway) GetServices() []string {
+    arr := make([]string, 0)
+    for k := range p.serviceCache {
+        arr = append(arr, k)
+    }
+    return arr
+}
+
 func (p *Gateway) Handle(r *http.Request, withMeta map[string]string) (out proto.Message, err error) {
     path := r.URL.Path
     //route
