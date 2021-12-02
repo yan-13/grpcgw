@@ -43,7 +43,7 @@ func NewGateway(consulAddr string, apiProtoDir string) (g *Gateway, err error) {
     return
 }
 
-func (p *Gateway) Handle(r *http.Request) (out proto.Message, err error) {
+func (p *Gateway) Handle(r *http.Request, withMeta map[string]string) (out proto.Message, err error) {
     path := r.URL.Path
     //route
     serviceName, grpcPath, err1 := route(path)
@@ -96,12 +96,10 @@ func (p *Gateway) Handle(r *http.Request) (out proto.Message, err error) {
     defer cancel()
 
     //with metadata
-    md := metadata.New(map[string]string{
-        "token":  r.Header.Get("X-Gateway-Token"),
-        "auth":   r.Header.Get("X-Gateway-Permission"),
-        "cookie": r.Header.Get("Cookie"),
-    })
-    ctx = metadata.NewOutgoingContext(ctx, md)
+    if len(withMeta) > 0 {
+        md := metadata.New(withMeta)
+        ctx = metadata.NewOutgoingContext(ctx, md)
+    }
 
     //in and out
     in, out, err := buildInAndOut(method, handler.HttpMethod, r)
