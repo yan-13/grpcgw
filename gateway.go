@@ -11,6 +11,7 @@ import (
     "github.com/jhump/protoreflect/desc"
     "github.com/jhump/protoreflect/dynamic"
     "google.golang.org/grpc"
+    "google.golang.org/grpc/connectivity"
     "google.golang.org/grpc/metadata"
     "io/ioutil"
     "net/http"
@@ -18,14 +19,21 @@ import (
 )
 
 type Gateway struct {
-    consulAddr   string
-    apiProtoDir  string
-    consulClient *api.Client
-    serviceCache map[string]grpcService
+    consulAddr      string
+    apiProtoDir     string
+    consulClient    *api.Client
+    serviceCache    map[string]grpcService
+    grpcClientCache map[string]grpcClient
+}
+
+type grpcClient struct {
+    firstConn bool
+    conn      *grpc.ClientConn
 }
 
 func NewGateway(consulAddr string, apiProtoDir string) (g *Gateway, err error) {
     g = &Gateway{consulAddr: consulAddr, apiProtoDir: apiProtoDir}
+    //service cache
     g.serviceCache = make(map[string]grpcService)
     arr, err1 := g.ReloadServices()
     if err1 != nil {
@@ -36,10 +44,14 @@ func NewGateway(consulAddr string, apiProtoDir string) (g *Gateway, err error) {
         err = errors.New("there are no services in api proto dir")
         return
     }
+    //consul
     err = g.connectConsul()
     if err != nil {
         return
     }
+
+    //grpc client cache
+    g.grpcClientCache = make(map[string]grpcClient)
     return
 }
 
@@ -91,8 +103,7 @@ func (p *Gateway) Handle(r *http.Request, withMeta map[string]string) (out proto
         err = err1
         return
     }
-    serverAddr := fmt.Sprintf("%s:%d", ip, port)
-    conn, err1 := grpc.Dial(serverAddr, grpc.WithInsecure())
+    conn, err1 := p.getConn(fmt.Sprintf("%s:%d", ip, port))
     if err1 != nil {
         err = err1
         return
@@ -114,6 +125,24 @@ func (p *Gateway) Handle(r *http.Request, withMeta map[string]string) (out proto
 
     //call
     err = conn.Invoke(ctx, reqPath, in, out)
+    return
+}
+
+//conn
+func (p *Gateway) getConn(serverAddr string) (conn *grpc.ClientConn, err error) {
+    client, ok := p.grpcClientCache[serverAddr]
+    if !ok || !client.firstConn || client.conn.GetState() != connectivity.Ready {
+        newConn, err1 := grpc.Dial(serverAddr, grpc.WithInsecure())
+        if err1 != nil {
+            err = err1
+            return
+        }
+        p.grpcClientCache[serverAddr] = grpcClient{
+            firstConn: true,
+            conn:      newConn,
+        }
+    }
+    conn = p.grpcClientCache[serverAddr].conn
     return
 }
 
