@@ -74,26 +74,26 @@ func (p *Gateway) Handle(r *http.Request, withMeta map[string]string) (out proto
 
     gs, ok := p.serviceCache[serviceName]
     if !ok {
-        err = errors.New("service not found")
+        err = errors.New(fmt.Sprintf("service [%s] not registed", serviceName))
         return
     }
 
     handler, ok := gs.Router[grpcPath]
     if !ok {
-        err = errors.New("handler not found")
+        err = errors.New(fmt.Sprintf("service [%s] has no route for path [%s]", serviceName, grpcPath))
         return
     }
 
     reqPath := fmt.Sprintf("%s.%s/%s", serviceName, handler.ServiceName, handler.MethodName)
     ss, ok := gs.Services[handler.ServiceName]
     if !ok {
-        err = errors.New("sub service not found")
+        err = errors.New(fmt.Sprintf("service [%s] has no sub service [%s]", serviceName, reqPath))
         return
     }
 
     method, ok := ss.Methods[handler.MethodName]
     if !ok {
-        err = errors.New("method not found")
+        err = errors.New(fmt.Sprintf("service [%s] has no method [%s]", serviceName, handler.MethodName))
         return
     }
 
@@ -180,12 +180,12 @@ func buildInAndOut(method *desc.MethodDescriptor, httpMethod string, r *http.Req
         }
         jsonBytes, err = json.Marshal(paramMap)
         if err != nil {
-            err = errors.New("json encode params error: " + err.Error())
+            err = errors.New("json encode request params error: " + err.Error())
         }
     } else {
         jsonBytes, err = ioutil.ReadAll(r.Body)
         if err != nil {
-            err = errors.New("json decode body error: " + err.Error())
+            err = errors.New("json decode request body error: " + err.Error())
         }
     }
     if err != nil {
@@ -193,7 +193,7 @@ func buildInAndOut(method *desc.MethodDescriptor, httpMethod string, r *http.Req
     }
     err = json.Unmarshal(jsonBytes, in)
     if err != nil {
-        err = errors.New("fill in message error: " + err.Error())
+        err = errors.New("fill req message error: " + err.Error())
     }
 
     return in, out, err
