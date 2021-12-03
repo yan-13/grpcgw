@@ -1,6 +1,7 @@
 package grpcgw
 
 import (
+    "bytes"
     "context"
     "encoding/json"
     "errors"
@@ -13,7 +14,6 @@ import (
     "github.com/jhump/protoreflect/desc/builder"
     "github.com/jhump/protoreflect/dynamic"
     "google.golang.org/grpc"
-    "google.golang.org/grpc/connectivity"
     "google.golang.org/grpc/metadata"
     "io/ioutil"
     "net/http"
@@ -105,7 +105,11 @@ func (p *Gateway) Handle(r *http.Request, withMeta map[string]string) (res strin
     }
 
     //in and out
-    in, out, err := buildInAndOut(method, h.HttpMethod, r)
+    in, out, err1 := buildInAndOut(method, h.HttpMethod, r)
+    if err1 != nil {
+        err = err1
+        return
+    }
 
     //api res
     apiRes := builder.NewMessage("apiRes")
@@ -131,26 +135,6 @@ func (p *Gateway) Handle(r *http.Request, withMeta map[string]string) (res strin
         m.SetFieldByName("data", out)
     }
     return marshaler.MarshalToString(m)
-}
-
-//conn
-func (p *Gateway) getConn(serverAddr string) (conn *grpc.ClientConn, err error) {
-    client, ok := p.grpcClientPool.clientMap[serverAddr]
-    if !ok || !client.firstConn || client.conn.GetState() != connectivity.Ready {
-        p.grpcClientPool.Lock()
-        defer p.grpcClientPool.Unlock()
-        newConn, err1 := grpc.Dial(serverAddr, grpc.WithInsecure())
-        if err1 != nil {
-            err = err1
-            return
-        }
-        p.grpcClientPool.clientMap[serverAddr] = grpcClient{
-            firstConn: true,
-            conn:      newConn,
-        }
-    }
-    conn = p.grpcClientPool.clientMap[serverAddr].conn
-    return
 }
 
 //分析要请求的grpc method
@@ -225,6 +209,7 @@ func buildInAndOut(method *desc.MethodDescriptor, httpMethod string, r *http.Req
             err = errors.New("json encode request params error: " + err.Error())
         }
     } else {
+        //POST
         jsonBytes, err = ioutil.ReadAll(r.Body)
         if err != nil {
             err = errors.New("json decode request body error: " + err.Error())
@@ -233,7 +218,8 @@ func buildInAndOut(method *desc.MethodDescriptor, httpMethod string, r *http.Req
     if err != nil {
         return nil, nil, err
     }
-    err = json.Unmarshal(jsonBytes, in)
+    unmarshaler := jsonpb.Unmarshaler{AllowUnknownFields: true}
+    err = unmarshaler.Unmarshal(bytes.NewReader(jsonBytes), in)
     if err != nil {
         err = errors.New("fill req message error: " + err.Error())
     }
