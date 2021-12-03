@@ -18,14 +18,20 @@ import (
     "io/ioutil"
     "net/http"
     "strconv"
+    "sync"
 )
 
 type Gateway struct {
-    consulAddr      string
-    apiProtoDir     string
-    consulClient    *api.Client
-    serviceCache    map[string]grpcService
-    grpcClientCache map[string]grpcClient
+    consulAddr     string
+    apiProtoDir    string
+    consulClient   *api.Client
+    serviceCache   map[string]grpcService
+    grpcClientPool grpcClientPool
+}
+
+type grpcClientPool struct {
+    sync.Mutex
+    clientMap map[string]grpcClient
 }
 
 type grpcClient struct {
@@ -53,7 +59,7 @@ func NewGateway(consulAddr string, apiProtoDir string) (g *Gateway, err error) {
     }
 
     //grpc client cache
-    g.grpcClientCache = make(map[string]grpcClient)
+    g.grpcClientPool.clientMap = make(map[string]grpcClient)
     return
 }
 
@@ -129,19 +135,21 @@ func (p *Gateway) Handle(r *http.Request, withMeta map[string]string) (res strin
 
 //conn
 func (p *Gateway) getConn(serverAddr string) (conn *grpc.ClientConn, err error) {
-    client, ok := p.grpcClientCache[serverAddr]
+    client, ok := p.grpcClientPool.clientMap[serverAddr]
     if !ok || !client.firstConn || client.conn.GetState() != connectivity.Ready {
+        p.grpcClientPool.Lock()
+        defer p.grpcClientPool.Unlock()
         newConn, err1 := grpc.Dial(serverAddr, grpc.WithInsecure())
         if err1 != nil {
             err = err1
             return
         }
-        p.grpcClientCache[serverAddr] = grpcClient{
+        p.grpcClientPool.clientMap[serverAddr] = grpcClient{
             firstConn: true,
             conn:      newConn,
         }
     }
-    conn = p.grpcClientCache[serverAddr].conn
+    conn = p.grpcClientPool.clientMap[serverAddr].conn
     return
 }
 
