@@ -5,10 +5,12 @@ import (
     "encoding/json"
     "errors"
     "fmt"
+    "github.com/golang/protobuf/jsonpb"
     "github.com/golang/protobuf/proto"
     "github.com/golang/protobuf/protoc-gen-go/descriptor"
     "github.com/hashicorp/consul/api"
     "github.com/jhump/protoreflect/desc"
+    "github.com/jhump/protoreflect/desc/builder"
     "github.com/jhump/protoreflect/dynamic"
     "google.golang.org/grpc"
     "google.golang.org/grpc/connectivity"
@@ -63,37 +65,13 @@ func (p *Gateway) GetServices() []string {
     return arr
 }
 
-func (p *Gateway) Handle(r *http.Request, withMeta map[string]string) (out proto.Message, err error) {
+func (p *Gateway) Handle(r *http.Request, withMeta map[string]string) (res string, err error) {
     path := r.URL.Path
+
     //route
-    serviceName, grpcPath, err1 := route(path)
+    serviceName, h, method, err1 := p.resolvePath(path)
     if err1 != nil {
         err = err1
-        return
-    }
-
-    gs, ok := p.serviceCache[serviceName]
-    if !ok {
-        err = errors.New(fmt.Sprintf("service [%s] not registed", serviceName))
-        return
-    }
-
-    handler, ok := gs.Router[grpcPath]
-    if !ok {
-        err = errors.New(fmt.Sprintf("service [%s] has no route for path [%s]", serviceName, grpcPath))
-        return
-    }
-
-    reqPath := fmt.Sprintf("%s.%s/%s", serviceName, handler.ServiceName, handler.MethodName)
-    ss, ok := gs.Services[handler.ServiceName]
-    if !ok {
-        err = errors.New(fmt.Sprintf("service [%s] has no sub service [%s]", serviceName, reqPath))
-        return
-    }
-
-    method, ok := ss.Methods[handler.MethodName]
-    if !ok {
-        err = errors.New(fmt.Sprintf("service [%s] has no method [%s]", serviceName, handler.MethodName))
         return
     }
 
@@ -121,11 +99,32 @@ func (p *Gateway) Handle(r *http.Request, withMeta map[string]string) (out proto
     }
 
     //in and out
-    in, out, err := buildInAndOut(method, handler.HttpMethod, r)
+    in, out, err := buildInAndOut(method, h.HttpMethod, r)
+
+    //api res
+    apiRes := builder.NewMessage("apiRes")
+    apiRes.AddField(builder.NewField("code", builder.FieldTypeInt32()))
+    apiRes.AddField(builder.NewField("message", builder.FieldTypeString()))
+    apiRes.AddField(builder.NewField("data", builder.FieldTypeImportedMessage(method.GetOutputType())))
+    md, err1 := apiRes.Build()
+    if err1 != nil {
+        err = err1
+        return
+    }
+    m := dynamic.NewMessage(md)
+    marshaler := jsonpb.Marshaler{OrigName: true, EmitDefaults: true}
 
     //call
+    reqPath := fmt.Sprintf("%s.%s/%s", serviceName, h.ServiceName, h.MethodName)
     err = conn.Invoke(ctx, reqPath, in, out)
-    return
+    if err != nil {
+        //todo grpc的error code是固定的, 暂时设code为1
+        m.SetFieldByName("code", int32(1))
+        m.SetFieldByName("message", err.Error())
+    } else {
+        m.SetFieldByName("data", out)
+    }
+    return marshaler.MarshalToString(m)
 }
 
 //conn
@@ -144,6 +143,41 @@ func (p *Gateway) getConn(serverAddr string) (conn *grpc.ClientConn, err error) 
     }
     conn = p.grpcClientCache[serverAddr].conn
     return
+}
+
+//分析要请求的grpc method
+func (p *Gateway) resolvePath(path string) (serviceName string, h handler, method *desc.MethodDescriptor, err error) {
+    //route
+    serviceName, grpcPath, err1 := route(path)
+    if err1 != nil {
+        err = err1
+        return
+    }
+
+    gs, ok := p.serviceCache[serviceName]
+    if !ok {
+        err = errors.New(fmt.Sprintf("service [%s] not registed", serviceName))
+        return
+    }
+
+    h, ok = gs.Router[grpcPath]
+    if !ok {
+        err = errors.New(fmt.Sprintf("service [%s] has no route for path [%s]", serviceName, grpcPath))
+        return
+    }
+
+    ss, ok := gs.Services[h.ServiceName]
+    if !ok {
+        err = errors.New(fmt.Sprintf("service [%s] has no sub service [%s]", serviceName, h.ServiceName))
+        return
+    }
+
+    method, ok = ss.Methods[h.MethodName]
+    if !ok {
+        err = errors.New(fmt.Sprintf("service [%s] has no method [%s]", serviceName, h.MethodName))
+        return
+    }
+    return serviceName, h, method, nil
 }
 
 //构造grpc的in和out
