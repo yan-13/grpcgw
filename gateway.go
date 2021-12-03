@@ -197,7 +197,7 @@ func buildInAndOut(method *desc.MethodDescriptor, httpMethod string, r *http.Req
         query := r.URL.Query()
         inFields := inType.GetFields()
         for _, v := range inFields {
-            jsonName := v.GetJSONName()
+            jsonName := v.GetName()
             param := query.Get(jsonName)
             fType := v.GetType()
             if fType == descriptor.FieldDescriptorProto_TYPE_INT32 || fType == descriptor.FieldDescriptorProto_TYPE_INT64 {
