@@ -208,12 +208,14 @@ func buildInAndOut(method *desc.MethodDescriptor, httpMethod string, r *http.Req
         if err != nil {
             err = errors.New("json encode request params error: " + err.Error())
         }
-    } else {
+    } else if "POST" == httpMethod {
         //POST
         jsonBytes, err = ioutil.ReadAll(r.Body)
         if err != nil {
             err = errors.New("json decode request body error: " + err.Error())
         }
+    } else {
+        err = errors.New(fmt.Sprintf("unknown http method: %s, please check your router config", httpMethod))
     }
     if err != nil {
         return nil, nil, err
