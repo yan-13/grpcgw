@@ -50,7 +50,7 @@ func NewDefaultServer(consulAddr string, serviceName string, nodeId string, node
         nodeId:      nodeId,
         nodeIp:      nodeIp,
         port:        0,
-        server:      s,
+        Server:      s,
     }
 }
 
@@ -84,7 +84,7 @@ func (p *GrpcServer) Serve() error {
     if !p.silence {
         log.Println("grpc server is running@" + servicePort)
     }
-    return p.server.Serve(lis)
+    return p.Server.Serve(lis)
 }
 
 //向consul注册微服务
