@@ -148,25 +148,25 @@ func (p *Gateway) resolvePath(path string) (serviceName string, h handler, metho
 
     gs, ok := p.serviceCache[serviceName]
     if !ok {
-        err = errors.New(fmt.Sprintf("service [%s] not registed", serviceName))
+        err = errors.New(fmt.Sprintf("service %s not registed", serviceName))
         return
     }
 
     h, ok = gs.Router[grpcPath]
     if !ok {
-        err = errors.New(fmt.Sprintf("service [%s] has no route for path [%s]", serviceName, grpcPath))
+        err = errors.New(fmt.Sprintf("service %s has no route for path %s", serviceName, grpcPath))
         return
     }
 
     ss, ok := gs.Services[h.ServiceName]
     if !ok {
-        err = errors.New(fmt.Sprintf("service [%s] has no sub service [%s]", serviceName, h.ServiceName))
+        err = errors.New(fmt.Sprintf("service %s has no sub service %s", serviceName, h.ServiceName))
         return
     }
 
     method, ok = ss.Methods[h.MethodName]
     if !ok {
-        err = errors.New(fmt.Sprintf("service [%s] has no method [%s]", serviceName, h.MethodName))
+        err = errors.New(fmt.Sprintf("service %s has no method %s", serviceName, h.MethodName))
         return
     }
     return serviceName, h, method, nil
