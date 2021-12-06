@@ -14,12 +14,12 @@ import (
 )
 
 type GrpcServer struct {
+    Server      *grpc.Server
     consulAddr  string
     serviceName string
     nodeId      string
     nodeIp      string
     port        int
-    server      *grpc.Server
     silence     bool
 }
 
