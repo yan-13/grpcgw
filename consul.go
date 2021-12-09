@@ -20,7 +20,7 @@ func (p *Gateway) connectConsul() error {
 }
 
 //发现微服务
-func (p *Gateway) discover(serviceName string, nodeId string) (s *api.AgentService, err error) {
+func (p *Gateway) discover(serviceName string) (s *api.AgentService, err error) {
     var lastIndex uint64
     services, metainfo, err1 := p.consulClient.Health().Service(serviceName, "", true, &api.QueryOptions{
         WaitIndex: lastIndex,
@@ -35,19 +35,8 @@ func (p *Gateway) discover(serviceName string, nodeId string) (s *api.AgentServi
         return
     }
 
-    if "" != nodeId {
-        for _, v := range services {
-            if v.Service.ID == nodeId {
-                s = v.Service
-                return
-            }
-        }
-        err = errors.New("未找到指定的node: " + nodeId)
-        return
-    } else {
-        rand.Seed(time.Now().Unix())
-        service := services[rand.Intn(len(services))]
-        s = service.Service
-        return
-    }
+    rand.Seed(time.Now().Unix())
+    service := services[rand.Intn(len(services))]
+    s = service.Service
+    return
 }
