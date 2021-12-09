@@ -82,12 +82,12 @@ func (p *Gateway) Handle(r *http.Request, withMeta map[string]string) (res strin
     }
 
     //conn
-    ip, port, err1 := p.discover(serviceName)
+    service, err1 := p.discover(serviceName, r.Header.Get("x-gateway-nodeid"))
     if err1 != nil {
         err = err1
         return
     }
-    conn, err1 := p.getConn(fmt.Sprintf("%s:%d", ip, port))
+    conn, err1 := p.getConn(fmt.Sprintf("%s:%d", service.Address, service.Port))
     if err1 != nil {
         err = err1
         return
